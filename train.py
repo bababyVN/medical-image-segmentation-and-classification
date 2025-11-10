@@ -101,8 +101,6 @@ def get_seg_model(name):
         return R2AttU_Net.R2AttU_Net()
     else:
         raise ValueError(f"Unknown segmentation model: {name}")
-# --- END Model Definitions ---
-
 
 # [Datasets handle] (Unchanged)
 class ClassificationDataset(Dataset):

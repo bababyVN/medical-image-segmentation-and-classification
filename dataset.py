@@ -3,6 +3,7 @@ import os
 import shutil
 import sys
 
+
 LOCAL_FOLDER_NAME = "dataset"
 MAIN_DATA_FOLDER = "COVID-19_Radiography_Dataset"
 EXACT_FILES_TO_REMOVE = ['COVID.metadata.xlsx', 'README.md.txt', 
