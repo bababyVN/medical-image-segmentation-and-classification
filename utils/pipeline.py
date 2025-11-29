@@ -36,7 +36,6 @@ class Pipeline:
     def get_seg_transform(self, img_size=256):
         return A.Compose([
             A.LongestMaxSize(max_size=img_size),
-            A.PadIfNeeded(min_height=img_size, min_width=img_size, border_mode=cv2.BORDER_CONSTANT, value=0),
             A.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
             ToTensorV2()
         ], is_check_shapes=False)
