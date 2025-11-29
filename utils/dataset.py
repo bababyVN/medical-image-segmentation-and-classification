@@ -13,106 +13,103 @@ import glob
 import pandas as pd
 import numpy as np
 from utils.pipeline import Pipeline
+import albumentations as A
+from albumentations.pytorch import ToTensorV2
 
 DATA_ROOT = "dataset"
 CLASSES = ['COVID', 'Healthy', 'Non-COVID']
 
+# [Datasets handle] (Fixed to handle Albumentations output and split datasets)
 class ClassificationDataset(Dataset):
-    def __init__(self, root, transform, csv_path=None, classes=CLASSES):
+    def __init__(self, root, transform, split='train'):
         """
-        Classification dataset that can load from CSV file or scan directories.
-        
         Args:
-            root: Root directory of the dataset
-            transform: Image transform
-            csv_path: Path to CSV file with 'id' and 'class' columns. If None, scans directories.
-            classes: List of class names
+            root: Root directory of the dataset (e.g., 'dataset')
+            transform: Albumentations transform
+            split: One of 'train', 'val', or 'test'
         """
         self.root = root
-        self.classes = classes
         self.transform = transform
         
-        if csv_path and os.path.exists(csv_path):
-            # Load from CSV file
-            df = pd.read_csv(csv_path)
-            self.samples = []
-            for _, row in df.iterrows():
-                image_id = row['id']
-                class_name = row['class']
-                # Construct full path: root/class/images/id.png
-                img_path = os.path.join(root, class_name, "images", f"{image_id}.png")
-                if os.path.exists(img_path):
-                    label = classes.index(class_name)
-                    self.samples.append((img_path, label))
-                else:
-                    print(f"Warning: Image not found: {img_path}")
-        else:
-            # Fallback to directory scanning (original behavior)
-            self.samples = [(p, i) for i, cls in enumerate(classes)
-                                 for p in glob.glob(os.path.join(root, cls, "images", "*.png"))]
+        # Load split CSV file
+        split_csv = os.path.join(root, 'splits', f'{split}.csv')
+        if not os.path.exists(split_csv):
+            raise FileNotFoundError(f"Split file not found: {split_csv}")
+        
+        df = pd.read_csv(split_csv)
+        
+        # Build samples list: (image_path, label_idx)
+        self.samples = []
+        for _, row in df.iterrows():
+            img_id = row['id']
+            cls = row['class']
+            label_idx = CLASSES.index(cls)
+            img_path = os.path.join(root, cls, "images", f"{img_id}.png")
+            
+            if os.path.exists(img_path):
+                self.samples.append((img_path, label_idx))
 
     def __getitem__(self, idx):
         path, label = self.samples[idx]
         img = Image.open(path).convert("RGB")
-        # Convert PIL to numpy array for Albumentations
+        # Ensure transform is callable (using Albumentations) and convert PIL to numpy array
         img_np = np.array(img)
-        # Apply transform with named argument (Albumentations requirement)
-        transformed = self.transform(image=img_np)
-        img = transformed['image']
+        if self.transform:
+            transformed = self.transform(image=img_np)
+            img = transformed['image']
+        else:
+            # Fallback to simple conversion if transform is None
+            img = ToTensorV2()(image=img_np)['image']
         return img, label
 
     def __len__(self): return len(self.samples)
 
 class SegmentationDataset(Dataset):
-    def __init__(self, root, transform, csv_path=None, classes=CLASSES):
+    def __init__(self, root, transform, split='train'):
         """
-        Segmentation dataset that can load from CSV file or scan directories.
-        
         Args:
-            root: Root directory of the dataset
-            transform: Image and mask transform
-            csv_path: Path to CSV file with 'id' and 'class' columns. If None, scans directories.
-            classes: List of class names
+            root: Root directory of the dataset (e.g., 'dataset')
+            transform: Albumentations transform
+            split: One of 'train', 'val', or 'test'
         """
         self.root = root
-        self.classes = classes
         self.transform = transform
         
-        if csv_path and os.path.exists(csv_path):
-            # Load from CSV file
-            df = pd.read_csv(csv_path)
-            self.pairs = []
-            for _, row in df.iterrows():
-                image_id = row['id']
-                class_name = row['class']
-                # Construct full paths: root/class/images/id.png and root/class/masks/id.png
-                img_path = os.path.join(root, class_name, "images", f"{image_id}.png")
-                mask_path = os.path.join(root, class_name, "masks", f"{image_id}.png")
-                if os.path.exists(img_path) and os.path.exists(mask_path):
-                    self.pairs.append((img_path, mask_path))
-                else:
-                    if not os.path.exists(img_path):
-                        print(f"Warning: Image not found: {img_path}")
-                    if not os.path.exists(mask_path):
-                        print(f"Warning: Mask not found: {mask_path}")
-        else:
-            # Fallback to directory scanning (original behavior)
-            self.pairs = [(os.path.join(root, c, "images", n),
-                          os.path.join(root, c, "masks", n))
-                        for c in classes for n in os.listdir(os.path.join(root, c, "images"))
-                        if n.endswith(".png") and os.path.exists(os.path.join(root, c, "masks", n))]
+        # Load split CSV file
+        split_csv = os.path.join(root, 'splits', f'{split}.csv')
+        if not os.path.exists(split_csv):
+            raise FileNotFoundError(f"Split file not found: {split_csv}")
+        
+        df = pd.read_csv(split_csv)
+        
+        # Build pairs list: (image_path, mask_path)
+        self.pairs = []
+        for _, row in df.iterrows():
+            img_id = row['id']
+            cls = row['class']
+            img_path = os.path.join(root, cls, "images", f"{img_id}.png")
+            mask_path = os.path.join(root, cls, "masks", f"{img_id}.png")
+            
+            # Only add if both image and mask exist
+            if os.path.exists(img_path) and os.path.exists(mask_path):
+                self.pairs.append((img_path, mask_path))
 
     def __getitem__(self, idx):
         img_path, mask_path = self.pairs[idx]
         img = Image.open(img_path).convert("RGB")
         mask = Image.open(mask_path).convert("L")
-        # Convert PIL to numpy arrays for Albumentations
+
         img_np = np.array(img)
         mask_np = np.array(mask)
-        # Apply transform with named arguments (Albumentations requirement)
-        transformed = self.transform(image=img_np, mask=mask_np)
-        img = transformed['image']
-        mask = transformed['mask']
+
+        if self.transform:
+            transformed = self.transform(image=img_np, mask=mask_np)
+            img = transformed['image']
+            mask = transformed['mask']
+        else:
+            img = ToTensorV2()(image=img_np)['image']
+            mask = ToTensorV2()(image=mask_np)['image'].float() / 255.0 # Normalize mask
+
         return img, mask
 
     def __len__(self): return len(self.pairs)
