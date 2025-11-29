@@ -31,11 +31,11 @@ class Pipeline:
         ], is_check_shapes=False)
     
     def get_cls_transform(self):
-        return lambda img: self.transform(image=np.array(img))['image']
+        return lambda img: self.transform(np.array(img))['image']
     
     def get_seg_transform(self):
         def seg_transform_func(img, mask):
-            transformed = self.transform(image=np.array(img), mask=np.array(mask))
+            transformed = self.transform(np.array(img), np.array(mask))
             return transformed['image'], transformed['mask'].unsqueeze(0).float()
         return seg_transform_func
     
