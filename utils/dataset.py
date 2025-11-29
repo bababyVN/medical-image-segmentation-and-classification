@@ -102,11 +102,27 @@ class SegmentationDataset(Dataset):
         img_np = np.array(img)
         mask_np = np.array(mask)
 
+        # FIX 1: Ensure mask has a channel dimension [H, W, 1] for consistent Albumentations/ToTensorV2 input
+        if mask_np.ndim == 2:
+            mask_np = np.expand_dims(mask_np, axis=-1)
+
         if self.transform:
+            # This call requires the transform to be an A.Compose object or a compatible function
             transformed = self.transform(image=img_np, mask=mask_np)
             img = transformed['image']
             mask = transformed['mask']
+
+            # FIX 2 (CRITICAL): Ensure the mask tensor is in [C, H, W] format expected by PyTorch.
+            # Albumentations ToTensorV2 sometimes fails to permute 1-channel arrays correctly.
+            # We check if the last dimension is 1 (the channel) and the first dimension is not 1.
+            if mask.ndim == 3 and mask.shape[-1] == 1 and mask.shape[0] != 1:
+                mask = mask.permute(2, 0, 1) # [H, W, 1] -> [1, H, W]
+
+            # FIX 3: Ensure mask is float and normalized [0, 1] for BCEWithLogitsLoss
+            # It's assumed the pixel values are 0 or 255 (binary mask)
+            mask = mask.float() / 255.0
         else:
+            # Fallback logic for when transform is None
             img = ToTensorV2()(image=img_np)['image']
             mask = ToTensorV2()(image=mask_np)['image'].float() / 255.0 # Normalize mask
 
