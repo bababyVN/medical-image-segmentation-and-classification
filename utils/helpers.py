@@ -174,11 +174,24 @@ def get_class_model(name):
                 elif name_lower == "vgg19":
                     pretrained_model = models.vgg19(pretrained=True)
 
-            # Load the state dict, ignoring the final classification layer (which has 1000 output features)
-            # The 'strict=False' is used because the final layer sizes will mismatch (1000 vs 3)
-            model.load_state_dict(pretrained_model.state_dict(), strict=False)
+            # IMPROVED: Manually transfer weights layer by layer for better compatibility
+            pretrained_dict = pretrained_model.state_dict()
+            model_dict = model.state_dict()
+            
+            # Filter out incompatible keys (fc layer and any mismatched layers)
+            pretrained_dict = {k: v for k, v in pretrained_dict.items() 
+                             if k in model_dict and model_dict[k].shape == v.shape}
+            
+            # Update model dict with pretrained weights
+            model_dict.update(pretrained_dict)
+            model.load_state_dict(model_dict)
+            
+            # Count how many layers were successfully loaded
+            loaded_count = len(pretrained_dict)
+            total_count = len([k for k in model_dict.keys() if 'fc' not in k])
+            print(f"✅ Successfully loaded {loaded_count}/{total_count} pre-trained layers for {name}")
+            
             del pretrained_model
-            print(f"✅ Successfully loaded pre-trained weights for {name}")
         
     except Exception as e:
         print(f"⚠️ Could not load pre-trained weights for {name} from torchvision: {e}. Model will train from scratch.")
@@ -215,35 +228,62 @@ def train(model, train_dl, val_dl, device, epochs, lr, name, save_dir, seg=False
     model = model.to(device, memory_format=torch.channels_last)
     criterion = nn.BCEWithLogitsLoss() if seg else nn.CrossEntropyLoss(label_smoothing=0.1)
     
-    # FIX: Fine-tuning logic for pre-trained classification models (essential for high accuracy)
-    # Check if we successfully loaded pre-trained weights by seeing if any parameter is currently frozen.
-    is_pretrained = False
-    for param in model.parameters():
-        if not param.requires_grad:
-            is_pretrained = True
-            break
-
-    if not seg and is_pretrained:
-        # If pre-trained weights were loaded, we only train the newly added classification head.
-        # Ensure all layers are frozen initially
-        for param in model.parameters():
-            param.requires_grad = False
+    # IMPROVED: Better fine-tuning strategy for pre-trained classification models
+    # For medical images, we need to fine-tune more layers than just the head
+    if not seg:
+        # Check if model has ResNet or VGG structure
+        has_resnet_structure = hasattr(model, 'layer1') and hasattr(model, 'layer2')
+        has_vgg_structure = hasattr(model, 'features')
         
-        # Unfreeze the final layer (where we applied Dropout and Linear layer)
-        if hasattr(model, 'fc'):
-            for param in model.fc.parameters():
-                param.requires_grad = True
-        elif hasattr(model, 'classifier'):
-            for param in model.classifier.parameters():
-                param.requires_grad = True
-        
-        # Optimizer only targets the trainable (unfrozen) parameters
-        optimizer = torch.optim.AdamW(filter(lambda p: p.requires_grad, model.parameters()), lr=lr, weight_decay=1e-4)
-        print(f"🎯 Fine-tuning only the classification head with LR: {lr}")
+        if has_resnet_structure or has_vgg_structure:
+            # Progressive fine-tuning: freeze early layers, unfreeze later layers
+            # This allows the model to adapt to medical images while preserving general features
+            
+            # Freeze all layers first
+            for param in model.parameters():
+                param.requires_grad = False
+            
+            # Unfreeze later layers for ResNet (layer3, layer4, and fc)
+            if has_resnet_structure:
+                # Unfreeze layer3 and layer4 (deeper features)
+                for param in model.layer3.parameters():
+                    param.requires_grad = True
+                for param in model.layer4.parameters():
+                    param.requires_grad = True
+                # Always unfreeze the classification head
+                if hasattr(model, 'fc'):
+                    for param in model.fc.parameters():
+                        param.requires_grad = True
+                print(f"🎯 Fine-tuning ResNet: layer3, layer4, and fc with LR: {lr}")
+            
+            # Unfreeze later layers for VGG (last feature blocks and classifier)
+            elif has_vgg_structure:
+                # Unfreeze the last two feature blocks (more task-specific features)
+                if hasattr(model, 'features'):
+                    # VGG features are in a Sequential, unfreeze last 2 blocks
+                    features_list = list(model.features.children())
+                    if len(features_list) >= 2:
+                        # Unfreeze last 2 blocks (roughly last 6-8 layers)
+                        for module in features_list[-8:]:
+                            for param in module.parameters():
+                                param.requires_grad = True
+                # Always unfreeze the classifier
+                if hasattr(model, 'classifier'):
+                    for param in model.classifier.parameters():
+                        param.requires_grad = True
+                print(f"🎯 Fine-tuning VGG: last feature blocks and classifier with LR: {lr}")
+            
+            # Optimizer only targets the trainable (unfrozen) parameters
+            trainable_params = [p for p in model.parameters() if p.requires_grad]
+            optimizer = torch.optim.AdamW(trainable_params, lr=lr, weight_decay=1e-4)
+        else:
+            # Full training for models without standard structure
+            optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=1e-4)
+            print(f"🔥 Training all layers from scratch with LR: {lr}")
     else:
-        # Full training for segmentation/scratch classification models
+        # Full training for segmentation models
         optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=1e-4)
-        print(f"🔥 Training all layers from scratch/unfrozen with LR: {lr}")
+        print(f"🔥 Training segmentation model with LR: {lr}")
 
     
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs)
