@@ -108,7 +108,7 @@ class SegmentationDataset(Dataset):
 
         if self.transform:
             # This call requires the transform to be an A.Compose object or a compatible function
-            transformed = self.transform(img_np, mask_np)
+            transformed = self.transform(img=img_np, mask=mask_np)
             img = transformed['image']
             mask = transformed['mask']
 
