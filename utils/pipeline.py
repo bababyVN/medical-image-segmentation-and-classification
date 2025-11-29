@@ -33,11 +33,13 @@ class Pipeline:
     def get_cls_transform(self):
         return lambda img: self.transform(image=np.array(img))['image']
     
-    def get_seg_transform(self):
-        def seg_transform_func(img, mask):
-            transformed = self.transform(image=np.array(img), mask=np.array(mask))
-            return transformed['image'], transformed['mask'].unsqueeze(0).float()
-        return seg_transform_func
+    def get_seg_transform(self, img_size=256):
+        return A.Compose([
+            A.LongestMaxSize(max_size=img_size),
+            A.PadIfNeeded(min_height=img_size, min_width=img_size, border_mode=cv2.BORDER_CONSTANT, value=0),
+            A.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+            ToTensorV2()
+        ], is_check_shapes=False)
     
     def _load_models(self, classification_model_name, segmentation_model_name):
         # [Import model]
