@@ -7,23 +7,19 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 import gradio as gr
-import torch.nn.functional as F
-import albumentations as A
-# Safely import only the required class
-from utils.pipeline import Pipeline 
-import os
-os.environ["NO_ALBUMENTATIONS_UPDATE"] = "1"
+from utils.pipeline import Pipeline, DEVICE
+import torchvision.transforms as T
 
-# Utility to safely load CSS
+vgg_transform = T.Compose([
+    T.Resize((256, 256)),
+    T.ToTensor(),
+    T.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+])
+
 def get_css(css_path):
-    """Safely loads CSS or returns empty string if the file is missing."""
-    try:
-        with open(css_path, 'r') as f:
-            custom = f.read()
-        return custom
-    except FileNotFoundError:
-        print(f"WARNING: CSS file not found at {css_path}. Continuing without custom styling.")
-        return "" 
+    with open(css_path, 'r') as f:
+        css = f.read()
+    return css
 
 def create_interface():
     custom = get_css('demo/design.css') 
@@ -38,11 +34,10 @@ def create_interface():
         
         with gr.Row(equal_height=True):
             # [MODEL SELECTION]
-            # Changed scale from 0.2 to 2 to prevent Gradio UserWarning
-            with gr.Column(scale=2): 
+            with gr.Column(scale=0.2): 
                 classification_dropdown = gr.Dropdown(
-                    choices=['ResNet50', 'ResNet18', 'VGG16', 'VGG19'],
-                    value='ResNet50',
+                    choices=['ResNet18', 'ResNet50', 'VGG16', 'VGG19'],
+                    value='ResNet18',
                     label='Classification Model',
                 )
                 segmentation_dropdown = gr.Dropdown(
@@ -51,7 +46,7 @@ def create_interface():
                     label='Segmentation Model'
                 )
                 overlay_opacity = gr.Slider(
-                    minimum=0.1, maximum=1.0, step=0.05, value=0.5,
+                    minimum=0.0, maximum=1.0, step=0.05, value=0.5,
                     label="Overlay Opacity (for COVID mask)",
                     interactive=True
                 )
@@ -62,7 +57,6 @@ def create_interface():
                     label="Upload Chest X-ray",
                     height=400,
                     elem_classes="upload-image",
-                    # *** FIX 1: Ensure input is a PIL Image object for .convert() method ***
                     type="pil" 
                 )
 
@@ -102,51 +96,26 @@ def create_interface():
             """)
                     
         def clear_inputs():
-            # **FIXED**: Using POSITIONAL RETURN for stability
-            return (
-                None, # diagnosis_label
-                None, # confidence_label
-                gr.update(value=None, visible=False), # output_image
-                gr.update(value="", visible=False) # diagnosis_text
-            )
+            return (None, None, gr.update(value=None, visible=False), gr.update(value="", visible=False))
         
         def handle_prediction(image, classification_model, segmentation_model, opacity):
-            # 1. Load weights and initialize models
+            if classification_model in ['VGG16', 'VGG19']:
+                img_tensor = vgg_transform(image).unsqueeze(0).to(DEVICE)
+                prediction, confidence = processor._predict_classification(img_tensor)
             processor._load_models(classification_model, segmentation_model)            
-            
-            # 2. Process image and get results
             prediction, confidence, output_img, analysis_text = processor.process_image(
-                image, segmentation_model, overlay_opacity=opacity
-            )
-            
-            # Determine CSS class for confidence label
-            confidence_class = (
-                "confidence-high" if confidence > 90
-                else "confidence-medium" if confidence > 70
-                else "confidence-low"
-            )
-            
+            image, segmentation_model, overlay_opacity=opacity)
+    
+            confidence_class = ("confidence-high" if confidence > 90 else "confidence-medium" if confidence > 70 else "confidence-low")
             is_covid_prediction = prediction == "COVID" and output_img is not None
-            
-            # 3. Update the UI - POSITIONAL RETURN (MUST MATCH outputs=[...] list)
+    
             return (
-                # 1. diagnosis_label
                 prediction, 
-
-                # 2. confidence_label
-                gr.update(
-                    value=f"Confidence: {confidence:.2f}%",
-                    elem_classes=[confidence_class]
-                ),
-
-                # 3. output_image
+                gr.update(value=f"Confidence: {confidence:.2f}%", elem_classes=[confidence_class]),
                 gr.update(value=output_img, visible=is_covid_prediction),
+                gr.update(value=analysis_text, visible=True))
 
-                # 4. diagnosis_text
-                gr.update(value=analysis_text, visible=True)
-            )
-
-        # Event Listeners
+        # [Event Listeners]
         submit_btn.click(
             fn=handle_prediction,
             inputs=[input_image, classification_dropdown, segmentation_dropdown, overlay_opacity],
@@ -158,7 +127,7 @@ def create_interface():
             inputs=[],
             outputs=[diagnosis_label, confidence_label, output_image, diagnosis_text]
         )
-        
+    
     return interface
 
 if __name__ == "__main__":
