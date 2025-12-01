@@ -100,7 +100,7 @@ def get_segmentation_model(name):
             "file": "R2U_Net.py",
             "class": "R2U_Net"
         },
-        "r2attentionnunet": {
+        "r2attunet": {
             "file": "R2AttU_Net.py",
             "class": "R2AttU_Net"
         }
