@@ -506,38 +506,65 @@ def print_summary(results):
     print("="*80 + "\n")
 
 
-def save_results_to_csv(results, output_path="test_results.csv"):
+def save_results_to_csv(results, cls_output_path="classification_test_results.csv", 
+                        seg_output_path="segmentation_test_results.csv"):
     """
-    Save test results to a CSV file.
+    Save test results to separate CSV files for classification and segmentation.
     
     Args:
         results: Dictionary containing all test results
-        output_path: Path to save the CSV file
+        cls_output_path: Path to save classification results CSV file
+        seg_output_path: Path to save segmentation results CSV file
     """
     if not results:
         print("\n[INFO] No results to save.")
         return
     
-    data = []
-    for model_name, metrics in results.items():
-        row = {'Model': model_name}
-        row.update(metrics)
-        
-        # Remove non-scalar values like confusion matrix
-        if 'confusion_matrix' in row:
-            del row['confusion_matrix']
-        if 'precision_per_class' in row:
-            del row['precision_per_class']
-        if 'recall_per_class' in row:
-            del row['recall_per_class']
-        if 'f1_per_class' in row:
-            del row['f1_per_class']
-        
-        data.append(row)
+    # Separate classification and segmentation results
+    cls_models = [k for k in results.keys() if any(x in k for x in ["ResNet18", "ResNet50", "VGG"])]
+    seg_models = [k for k in results.keys() if "Unet" in k or "UNet" in k]
     
-    df = pd.DataFrame(data)
-    df.to_csv(output_path, index=False)
-    print(f"\n[INFO] Test results saved to: {output_path}")
+    # Save classification results
+    if cls_models:
+        cls_data = []
+        for model_name in cls_models:
+            metrics = results[model_name]
+            row = {'Model': model_name}
+            row.update(metrics)
+            
+            # Remove non-scalar values like confusion matrix and per-class metrics
+            if 'confusion_matrix' in row:
+                del row['confusion_matrix']
+            if 'precision_per_class' in row:
+                del row['precision_per_class']
+            if 'recall_per_class' in row:
+                del row['recall_per_class']
+            if 'f1_per_class' in row:
+                del row['f1_per_class']
+            
+            cls_data.append(row)
+        
+        cls_df = pd.DataFrame(cls_data)
+        cls_df.to_csv(cls_output_path, index=False)
+        print(f"\n[INFO] Classification results saved to: {cls_output_path}")
+    else:
+        print("\n[INFO] No classification results to save.")
+    
+    # Save segmentation results
+    if seg_models:
+        seg_data = []
+        for model_name in seg_models:
+            metrics = results[model_name]
+            row = {'Model': model_name}
+            row.update(metrics)
+            
+            seg_data.append(row)
+        
+        seg_df = pd.DataFrame(seg_data)
+        seg_df.to_csv(seg_output_path, index=False)
+        print(f"[INFO] Segmentation results saved to: {seg_output_path}")
+    else:
+        print("\n[INFO] No segmentation results to save.")
 
 
 if __name__ == "__main__":
@@ -552,8 +579,10 @@ if __name__ == "__main__":
     # Print summary
     print_summary(results)
     
-    # Save results to CSV
-    save_results_to_csv(results, "test_results.csv")
+    # Save results to separate CSV files
+    save_results_to_csv(results, 
+                       cls_output_path="classification_test_results.csv",
+                       seg_output_path="segmentation_test_results.csv")
     
     print("\n[INFO] Testing complete!")
 
