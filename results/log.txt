@@ -1,0 +1,262 @@
+================================================================================
+                    MODEL TESTING UTILITY
+================================================================================
+[INFO] Using device: cuda
+
+[INFO] Classification Test Dataset: 1516 samples
+Loading IMAGENET1K_V1 weights for ResNet18...
+Using cache found in /root/.cache/torch/hub/pytorch_vision_v0.10.0
+
+============================================================
+Testing Classification Model: ResNet18
+============================================================
+Testing ResNet18: 100% 95/95 [00:06<00:00, 13.64it/s]
+
+ResNet18 Test Results:
+------------------------------------------------------------
+Accuracy:  96.83%
+Precision: 96.84%
+Recall:    96.83%
+F1 Score:  96.82%
+
+Per-Class Metrics:
+
+COVID:
+  Precision: 97.41%
+  Recall:    93.65%
+  F1 Score:  95.49%
+
+Healthy:
+  Precision: 96.73%
+  Recall:    98.63%
+  F1 Score:  97.67%
+
+Non-COVID:
+  Precision: 96.09%
+  Recall:    91.79%
+  F1 Score:  93.89%
+
+Confusion Matrix:
+       COVID                              Healthy                            Non-COVID
+COVID                339          23           0
+Healthy                9        1006           5
+Non-COVID              0          11         123
+============================================================
+
+Loading IMAGENET1K_V1 weights for ResNet50...
+Using cache found in /root/.cache/torch/hub/pytorch_vision_v0.10.0
+
+============================================================
+Testing Classification Model: ResNet50
+============================================================
+Testing ResNet50: 100% 95/95 [00:05<00:00, 16.01it/s]
+
+ResNet50 Test Results:
+------------------------------------------------------------
+Accuracy:  97.36%
+Precision: 97.36%
+Recall:    97.36%
+F1 Score:  97.36%
+
+Per-Class Metrics:
+
+COVID:
+  Precision: 96.15%
+  Recall:    96.69%
+  F1 Score:  96.42%
+
+Healthy:
+  Precision: 98.14%
+  Recall:    98.04%
+  F1 Score:  98.09%
+
+Non-COVID:
+  Precision: 94.74%
+  Recall:    94.03%
+  F1 Score:  94.38%
+
+Confusion Matrix:
+       COVID                              Healthy                            Non-COVID
+COVID                350          11           1
+Healthy               14        1000           6
+Non-COVID              0           8         126
+============================================================
+
+Loading IMAGENET1K_V1 weights for VGG16...
+Using cache found in /root/.cache/torch/hub/pytorch_vision_v0.10.0
+
+============================================================
+Testing Classification Model: VGG16
+============================================================
+Testing VGG16: 100% 95/95 [00:07<00:00, 12.45it/s]
+
+VGG16 Test Results:
+------------------------------------------------------------
+Accuracy:  98.35%
+Precision: 98.36%
+Recall:    98.35%
+F1 Score:  98.34%
+
+Per-Class Metrics:
+
+COVID:
+  Precision: 99.43%
+  Recall:    95.86%
+  F1 Score:  97.61%
+
+Healthy:
+  Precision: 98.07%
+  Recall:    99.51%
+  F1 Score:  98.78%
+
+Non-COVID:
+  Precision: 97.73%
+  Recall:    96.27%
+  F1 Score:  96.99%
+
+Confusion Matrix:
+       COVID                              Healthy                            Non-COVID
+COVID                347          15           0
+Healthy                2        1015           3
+Non-COVID              0           5         129
+============================================================
+
+Loading IMAGENET1K_V1 weights for VGG19...
+Using cache found in /root/.cache/torch/hub/pytorch_vision_v0.10.0
+
+============================================================
+Testing Classification Model: VGG19
+============================================================
+Testing VGG19: 100% 95/95 [00:07<00:00, 13.24it/s]
+
+VGG19 Test Results:
+------------------------------------------------------------
+Accuracy:  97.56%
+Precision: 97.57%
+Recall:    97.56%
+F1 Score:  97.55%
+
+Per-Class Metrics:
+
+COVID:
+  Precision: 98.85%
+  Recall:    94.75%
+  F1 Score:  96.76%
+
+Healthy:
+  Precision: 97.40%
+  Recall:    99.12%
+  F1 Score:  98.25%
+
+Non-COVID:
+  Precision: 95.42%
+  Recall:    93.28%
+  F1 Score:  94.34%
+
+Confusion Matrix:
+       COVID                              Healthy                            Non-COVID
+COVID                343          18           1
+Healthy                4        1011           5
+Non-COVID              0           9         125
+============================================================
+
+
+[INFO] Segmentation Test Dataset: 1516 samples
+
+============================================================
+Testing Segmentation Model: ResNetUnet
+============================================================
+Testing ResNetUnet: 100% 190/190 [00:17<00:00, 10.79it/s]
+
+ResNetUnet Test Results:
+------------------------------------------------------------
+IoU (Jaccard):     96.58%
+Dice Coefficient:  98.23%
+Pixel Accuracy:    99.17%
+Precision:         97.86%
+Recall:            98.65%
+F1 Score:          98.23%
+============================================================
+
+
+============================================================
+Testing Segmentation Model: AttentionUNet
+============================================================
+Testing AttentionUNet: 100% 190/190 [00:21<00:00,  8.91it/s]
+
+AttentionUNet Test Results:
+------------------------------------------------------------
+IoU (Jaccard):     95.94%
+Dice Coefficient:  97.86%
+Pixel Accuracy:    99.01%
+Precision:         97.97%
+Recall:            97.86%
+F1 Score:          97.86%
+============================================================
+
+
+============================================================
+Testing Segmentation Model: R2Unet
+============================================================
+Testing R2Unet: 100% 190/190 [01:23<00:00,  2.27it/s]
+
+R2Unet Test Results:
+------------------------------------------------------------
+IoU (Jaccard):     92.25%
+Dice Coefficient:  95.81%
+Pixel Accuracy:    98.08%
+Precision:         96.61%
+Recall:            95.33%
+F1 Score:          95.81%
+============================================================
+
+
+============================================================
+Testing Segmentation Model: R2AttUnet
+============================================================
+Testing R2AttUnet: 100% 190/190 [01:25<00:00,  2.23it/s]
+
+R2AttUnet Test Results:
+------------------------------------------------------------
+IoU (Jaccard):     79.35%
+Dice Coefficient:  87.09%
+Pixel Accuracy:    94.60%
+Precision:         91.09%
+Recall:            86.70%
+F1 Score:          87.09%
+============================================================
+
+
+================================================================================
+                         TEST RESULTS SUMMARY
+================================================================================
+
+CLASSIFICATION MODELS:
+--------------------------------------------------------------------------------
+Model                Accuracy     Precision    Recall       F1 Score    
+--------------------------------------------------------------------------------
+ResNet18                  96.83%      96.84%      96.83%      96.82%
+ResNet50                  97.36%      97.36%      97.36%      97.36%
+VGG16                     98.35%      98.36%      98.35%      98.34%
+VGG19                     97.56%      97.57%      97.56%      97.55%
+
+🏆 Best Classification Model: VGG16 (Accuracy: 98.35%)
+
+
+SEGMENTATION MODELS:
+--------------------------------------------------------------------------------
+Model                IoU        Dice       Precision    Recall       F1 Score    
+--------------------------------------------------------------------------------
+ResNetUnet              96.58%    98.23%      97.86%      98.65%      98.23%
+AttentionUNet           95.94%    97.86%      97.97%      97.86%      97.86%
+R2Unet                  92.25%    95.81%      96.61%      95.33%      95.81%
+R2AttUnet               79.35%    87.09%      91.09%      86.70%      87.09%
+
+🏆 Best Segmentation Model: ResNetUnet (Dice: 98.23%)
+================================================================================
+
+
+[INFO] Classification results saved to: classification_test_results.csv
+[INFO] Segmentation results saved to: segmentation_test_results.csv
+
+[INFO] Testing complete!

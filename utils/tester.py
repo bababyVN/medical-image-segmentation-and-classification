@@ -24,6 +24,7 @@ warnings.filterwarnings("ignore")
 torch.backends.cudnn.benchmark = True
 os.environ["NO_ALBUMENTATIONS_UPDATE"] = "1"
 
+os.makedirs("results", exist_ok=True)
 # [CONFIG]
 DATA_ROOT = "dataset"
 WEIGHTS_ROOT = "weights"
@@ -506,8 +507,8 @@ def print_summary(results):
     print("="*80 + "\n")
 
 
-def save_results_to_csv(results, cls_output_path="classification_test_results.csv", 
-                        seg_output_path="segmentation_test_results.csv"):
+def save_results_to_csv(results, cls_output_path="results/classification_test_results.csv", 
+                        seg_output_path="results/segmentation_test_results.csv"):
     """
     Save test results to separate CSV files for classification and segmentation.
     
