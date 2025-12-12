@@ -88,7 +88,7 @@ if __name__ == "__main__":
     full_val_cls_ds = ClassificationDataset(DATA_ROOT, val_cls_transform)
 
     if len(full_train_cls_ds) == 0:
-        print("🛑 Classification dataset is empty. Cannot proceed with training.")
+        print("Classification dataset is empty. Cannot proceed with training.")
         # We will continue if only segmentation data is present.
 
     # Classification Split
@@ -105,7 +105,7 @@ if __name__ == "__main__":
 
     # Segmentation Split
     if len(full_train_seg_ds) == 0:
-        print("⚠️ Segmentation dataset is empty. Skipping segmentation training.")
+        print("Segmentation dataset is empty. Skipping segmentation training.")
         seg_train, seg_val = [], []
     else:
         n_seg = int(0.8*len(full_train_seg_ds))
@@ -148,7 +148,7 @@ if __name__ == "__main__":
                     model = get_seg_model(name)
                     cls_head_name = None # Not applicable for segmentation
             except Exception as e:
-                print(f"❌ Error loading model {name}: {e}. Skipping.")
+                print(f"Error loading model {name}: {e}. Skipping.")
                 continue
 
             if task == "classification":
@@ -157,7 +157,7 @@ if __name__ == "__main__":
                 train_dl, val_dl = seg_train_dl, seg_val_dl
 
             if train_dl is None or val_dl is None:
-                 print(f"🛑 Skipping training for {name}: Data loaders are not available.")
+                 print(f"Skipping training for {name}: Data loaders are not available.")
                  continue
 
             # Pass the classification head name only for classification tasks
