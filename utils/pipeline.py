@@ -9,6 +9,8 @@ import cv2
 import os
 import importlib.util
 import models.classification_models.VGG as vgg
+from models.classification_models.CLIP import CLIPClassifier, DEFAULT_TEXT_PROMPTS
+from models.segmentation_models.CLIPSeg import CLIPSegForSegmentation, DEFAULT_TEXT_PROMPT
 
 WEIGHTS_ROOT = "weights"
 CLS_SAVE = os.path.join(WEIGHTS_ROOT, "classification_models")
@@ -62,7 +64,16 @@ def get_classification_model(name):
     # Use pretrained=True to ensure the feature layers (features) are initialized with ImageNet weights
     pretrained_flag = True 
     try:
-        if "resnet" in name_lower:
+        if "clip" in name_lower:
+            # CLIP model handling
+            model = CLIPClassifier(
+                model_name="openai/clip-vit-base-patch32",
+                num_classes=len(CLASSES),
+                text_prompts=DEFAULT_TEXT_PROMPTS,
+                device=DEVICE
+            )
+            return model
+        elif "resnet" in name_lower:
             model = torch.hub.load('pytorch/vision:v0.10.0', name_lower, weights="IMAGENET1K_V1")
         elif "vgg" in name_lower:
             hub_name = name_lower + "_bn"
@@ -85,6 +96,20 @@ class PlaceholderModel(nn.Module):
 
 def get_segmentation_model(name):
     name_lower = name.lower()
+    
+    # Handle CLIPSeg model separately
+    if "clipseg" in name_lower:
+        try:
+            model = CLIPSegForSegmentation(
+                model_name="CIDAS/clipseg-rd64-refined",
+                text_prompt=DEFAULT_TEXT_PROMPT,
+                device=DEVICE
+            )
+            return model
+        except Exception as e:
+            print(f"FATAL WARNING: Cannot import CLIPSeg model. Error: {e}")
+            return PlaceholderModel()
+    
     current_dir = os.path.dirname(os.path.abspath(__file__))
     project_root = os.path.join(current_dir, '..')
     model_configs = {
@@ -164,8 +189,14 @@ class Pipeline:
                 # 1. Load the model architecture (initialized with ImageNet weights and adapted head)
                 self.classification_model = get_classification_model(classification_name)
                 cls_weights_path = os.path.join(CLS_SAVE, f"{classification_name}_best_acc.pt")
+                
                 if os.path.exists(cls_weights_path):
-                    if 'vgg' in classification_name.lower():
+                    if 'clip' in classification_name.lower():
+                        # Load CLIP model weights
+                        state_dict = torch.load(cls_weights_path, map_location=DEVICE, weights_only=True)
+                        self.classification_model.clip_model.load_state_dict(state_dict, strict=False)
+                        print(f"Loaded CLIP weights from: {cls_weights_path}")
+                    elif 'vgg' in classification_name.lower():
                         state_dict = torch.load(cls_weights_path, map_location=DEVICE)
                         if 'classifier.7.weight' in state_dict and 'classifier.7.bias' in state_dict:
                             w = state_dict['classifier.7.weight']
@@ -176,10 +207,12 @@ class Pipeline:
                             self.classification_model.classifier[6].bias.data.copy_(b)
                     else:
                         state_dict = torch.load(cls_weights_path, map_location=DEVICE)
-                    # strict=False to allow mismatched final layer
-                    model_load_result = self.classification_model.load_state_dict(state_dict, strict=False)
-                    if model_load_result.missing_keys:
-                        print(f"Missing keys (usually last layer): {model_load_result.missing_keys}")
+                    
+                    # strict=False to allow mismatched final layer (except for CLIP which was handled above)
+                    if 'clip' not in classification_name.lower():
+                        model_load_result = self.classification_model.load_state_dict(state_dict, strict=False)
+                        if model_load_result.missing_keys:
+                            print(f"Missing keys (usually last layer): {model_load_result.missing_keys}")
                 else:
                     print("Weights file not found. Using pretrained ImageNet weights only.")
 
@@ -209,10 +242,18 @@ class Pipeline:
                     seg_weights_path = os.path.join(SEG_SAVE, f"{segmentation_name}_best_loss.pt")
                     
                     print(f"Attempting to load SEG weights from: {seg_weights_path}")
-                    # Load state dict with weights_only=True
-                    self.segmentation_model.load_state_dict(
-                        torch.load(seg_weights_path, map_location=DEVICE, weights_only=True)
-                    )
+                    
+                    if 'clipseg' in segmentation_name.lower():
+                        # Load CLIPSeg model weights
+                        state_dict = torch.load(seg_weights_path, map_location=DEVICE, weights_only=True)
+                        self.segmentation_model.clipseg_model.load_state_dict(state_dict, strict=False)
+                        print(f"Loaded CLIPSeg weights from: {seg_weights_path}")
+                    else:
+                        # Load state dict with weights_only=True for other models
+                        self.segmentation_model.load_state_dict(
+                            torch.load(seg_weights_path, map_location=DEVICE, weights_only=True)
+                        )
+                    
                     self.segmentation_model.eval()
                     self.segmentation_model.to(DEVICE)
                     print(f"Successfully loaded Segmentation Model: {segmentation_name}")
@@ -227,20 +268,33 @@ class Pipeline:
         if self.classification_model is None:
             return "FATAL ERROR: Classification Model Not Loaded", 0.0
         with torch.no_grad():
-            logits = self.classification_model(img_tensor.to(DEVICE))
+            # Check if it's a CLIP model
+            if isinstance(self.classification_model, CLIPClassifier):
+                # CLIP expects pixel_values, not regular tensor
+                logits = self.classification_model(img_tensor.to(DEVICE))
+            else:
+                logits = self.classification_model(img_tensor.to(DEVICE))
             probs = F.softmax(logits, dim=1)[0]
             confidence, predicted_index = torch.max(probs, 0)
             prediction = CLASSES[predicted_index.item()]
             
         return prediction, confidence.item() * 100
 
-    def _predict_segmentation(self, img_tensor):
+    def _predict_segmentation(self, img_tensor, pil_image=None):
         if self.segmentation_model is None or isinstance(self.segmentation_model, PlaceholderModel):
             return None 
         with torch.no_grad():
-            logits = self.segmentation_model(img_tensor.to(DEVICE))
-            mask = torch.sigmoid(logits).cpu().squeeze(0).squeeze(0)
-            mask_np = (mask.numpy() > 0.5).astype(np.uint8) * 255 
+            # Check if it's a CLIPSeg model
+            if isinstance(self.segmentation_model, CLIPSegForSegmentation):
+                if pil_image is None:
+                    return None
+                # CLIPSeg has its own predict method
+                mask_np = self.segmentation_model.predict(pil_image, threshold=0.5)
+                mask_np = (mask_np * 255).astype(np.uint8)
+            else:
+                logits = self.segmentation_model(img_tensor.to(DEVICE))
+                mask = torch.sigmoid(logits).cpu().squeeze(0).squeeze(0)
+                mask_np = (mask.numpy() > 0.5).astype(np.uint8) * 255 
         return mask_np
 
 
@@ -249,16 +303,21 @@ class Pipeline:
             return "No Image Uploaded", 0.0, None, "Please upload an image to begin analysis."
         original_img_np = np.array(pil_image.convert("RGB"))
         H, W, _ = original_img_np.shape
-        img_np = np.array(pil_image.convert("RGB")) 
-        if self.classification_model.__class__.__name__ in ['VGG16', 'VGG19']:
-            img_tensor = preprocess_for_vgg(pil_image)
-        else:
-            transformed = self.val_transform(image=img_np)
-            img_tensor = transformed['image'].unsqueeze(0)
-
+        img_np = np.array(pil_image.convert("RGB"))
+        
         # Ensure models are loaded before prediction
         cls_name_to_load = self.classification_model.__class__.__name__ if self.classification_model else 'ResNet50'
         self._load_models(cls_name_to_load, segmentation_model_name)
+        
+        # Handle preprocessing based on model type
+        if self.classification_model.__class__.__name__ in ['VGG16', 'VGG19']:
+            img_tensor = preprocess_for_vgg(pil_image)
+        elif isinstance(self.classification_model, CLIPClassifier):
+            # CLIP uses its own preprocessing
+            img_tensor = self.classification_model.preprocess_image(pil_image)
+        else:
+            transformed = self.val_transform(image=img_np)
+            img_tensor = transformed['image'].unsqueeze(0)
         
         prediction, confidence = self._predict_classification(img_tensor)
         output_img = None
@@ -269,7 +328,7 @@ class Pipeline:
         elif prediction != "COVID": # Use explicit check
             analysis_text += "\nRecommendation: Consult a medical professional for final diagnosis. The model suggests no severe COVID-19 pathology."
         else:
-            mask_np = self._predict_segmentation(img_tensor)
+            mask_np = self._predict_segmentation(img_tensor, pil_image)
             if mask_np is not None:
                 mask_resized = cv2.resize(mask_np, (W, H), interpolation=cv2.INTER_NEAREST)
                 original_bgr = cv2.cvtColor(original_img_np, cv2.COLOR_RGB2BGR)

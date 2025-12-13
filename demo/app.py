@@ -36,12 +36,12 @@ def create_interface():
             # [MODEL SELECTION]
             with gr.Column(scale=0.2): 
                 classification_dropdown = gr.Dropdown(
-                    choices=['ResNet18', 'ResNet50', 'VGG16', 'VGG19'],
+                    choices=['ResNet18', 'ResNet50', 'VGG16', 'VGG19', 'CLIP'],
                     value='ResNet18',
                     label='Classification Model',
                 )
                 segmentation_dropdown = gr.Dropdown(
-                    choices=['ResNetUnet', 'AttentionUNet', 'R2Unet', 'R2AttUnet'],
+                    choices=['ResNetUnet', 'AttentionUNet', 'R2Unet', 'R2AttUnet', 'CLIPSeg'],
                     value='ResNetUnet',
                     label='Segmentation Model'
                 )
@@ -99,12 +99,9 @@ def create_interface():
             return (None, None, gr.update(value=None, visible=False), gr.update(value="", visible=False))
         
         def handle_prediction(image, classification_model, segmentation_model, opacity):
-            if classification_model in ['VGG16', 'VGG19']:
-                img_tensor = vgg_transform(image).unsqueeze(0).to(DEVICE)
-                prediction, confidence = processor._predict_classification(img_tensor)
             processor._load_models(classification_model, segmentation_model)            
             prediction, confidence, output_img, analysis_text = processor.process_image(
-            image, segmentation_model, overlay_opacity=opacity)
+                image, segmentation_model, overlay_opacity=opacity)
     
             confidence_class = ("confidence-high" if confidence > 90 else "confidence-medium" if confidence > 70 else "confidence-low")
             is_covid_prediction = prediction == "COVID" and output_img is not None

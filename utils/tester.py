@@ -555,7 +555,7 @@ def test_all_models(device='cuda', batch_size=16):
                     )
                     
                     # Load trained weights
-                    model.clip_model.load_state_dict(torch.load(weight_path, map_location=device))
+                    model.clip_model.load_state_dict(torch.load(weight_path, map_location=device, weights_only=True))
                     model = model.to(device)
                     
                     # Test the model with special CLIP test function
