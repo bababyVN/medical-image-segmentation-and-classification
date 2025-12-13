@@ -14,7 +14,7 @@ class CLIPSegForSegmentation(nn.Module):
     def __init__(
         self,
         model_name="CIDAS/clipseg-rd64-refined",
-        text_prompt="lungs",
+        text_prompt=DEFAULT_TEXT_PROMPT,
         device=None,
     ):
         super(CLIPSegForSegmentation, self).__init__()
@@ -24,9 +24,7 @@ class CLIPSegForSegmentation(nn.Module):
             self.device = "cuda" if torch.cuda.is_available() else "cpu"
         else:
             self.device = device
-        self.clipseg_model = CLIPSegForImageSegmentation.from_pretrained(
-            model_name
-        ).to(self.device)
+        self.clipseg_model = CLIPSegForImageSegmentation.from_pretrained(model_name).to(self.device)
         self.processor = CLIPSegProcessor.from_pretrained(model_name)
         self.text_prompt = text_prompt
 
@@ -43,9 +41,7 @@ class CLIPSegForSegmentation(nn.Module):
         if text_prompt is None:
             text_prompt = self.text_prompt
 
-        inputs = self.processor(
-            text=[text_prompt], images=image, return_tensors="pt", padding=True
-        )
+        inputs = self.processor(text=[text_prompt], images=image, return_tensors="pt", padding=True)
         return {k: v.to(self.device) for k, v in inputs.items()}
 
     def predict(self, image, text_prompt=None, threshold=0.5, return_probs=False):
@@ -59,14 +55,14 @@ class CLIPSegForSegmentation(nn.Module):
 
             # Preprocess
             inputs = self.preprocess_image(image, text_prompt)
-            
+
             # Forward pass
             logits = self.forward(
                 inputs["pixel_values"],
                 inputs["input_ids"],
                 inputs["attention_mask"],
             )
-            
+
             # Get probabilities
             probs = torch.sigmoid(logits).squeeze(0).cpu().numpy()
 
@@ -92,29 +88,11 @@ class CLIPSegForSegmentation(nn.Module):
                 return binary_mask, probs
             return binary_mask
 
-    def freeze_encoder(self):
-        """Freeze encoder parameters (only train decoder)."""
-        for name, param in self.clipseg_model.named_parameters():
-            if "decoder" not in name:
-                param.requires_grad = False
-            else:
-                param.requires_grad = True
-
-    def freeze_decoder(self):
-        """Freeze decoder parameters."""
-        for name, param in self.clipseg_model.named_parameters():
-            if "decoder" in name:
-                param.requires_grad = False
-
-    def unfreeze_all(self):
-        """Unfreeze all parameters for full fine-tuning."""
-        for param in self.clipseg_model.parameters():
-            param.requires_grad = True
-
     def get_trainable_params(self, decoder_only=True):
         if decoder_only:
             return filter(
-                lambda p: p.requires_grad and any(
+                lambda p: p.requires_grad
+                and any(
                     name.find("decoder") != -1
                     for name, param in self.clipseg_model.named_parameters()
                     if param is p
