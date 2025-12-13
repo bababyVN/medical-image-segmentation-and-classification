@@ -19,6 +19,8 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from utils.dataset import ClassificationDataset, SegmentationDataset
 from utils.helpers import get_class_model, get_seg_model
+from models.classification_models.CLIP import CLIPClassifier, DEFAULT_TEXT_PROMPTS
+from models.segmentation_models.CLIPSeg import CLIPSegForSegmentation, DEFAULT_TEXT_PROMPT
 
 warnings.filterwarnings("ignore")
 torch.backends.cudnn.benchmark = True
@@ -176,18 +178,6 @@ def calculate_segmentation_metrics(pred, target, threshold=0.5):
 
 # --- TEST FUNCTIONS ---
 def test_classification_model(model, test_loader, device, model_name):
-    """
-    Test a classification model on the test dataset.
-    
-    Args:
-        model: The classification model to test
-        test_loader: DataLoader for test data
-        device: Device to run on (cuda/cpu)
-        model_name: Name of the model for display
-    
-    Returns:
-        dict: Dictionary containing all metrics
-    """
     model.eval()
     all_preds = []
     all_labels = []
@@ -240,18 +230,6 @@ def test_classification_model(model, test_loader, device, model_name):
 
 
 def test_segmentation_model(model, test_loader, device, model_name):
-    """
-    Test a segmentation model on the test dataset.
-    
-    Args:
-        model: The segmentation model to test
-        test_loader: DataLoader for test data
-        device: Device to run on (cuda/cpu)
-        model_name: Name of the model for display
-    
-    Returns:
-        dict: Dictionary containing all metrics
-    """
     model.eval()
     
     total_iou = 0
@@ -317,6 +295,194 @@ def test_segmentation_model(model, test_loader, device, model_name):
     return avg_metrics
 
 
+def test_clip_classification_model(model, test_dataset, device, model_name, batch_size=16):
+    """
+    Test CLIP classification model with its own preprocessing.
+    
+    Args:
+        model: The CLIP classification model to test
+        test_dataset: Test dataset (used to get image paths and labels)
+        device: Device to run on (cuda/cpu)
+        model_name: Name of the model for display
+        batch_size: Batch size for testing
+    
+    Returns:
+        dict: Dictionary containing all metrics
+    """
+    model.eval()
+    all_preds = []
+    all_labels = []
+    
+    print(f"\n{'='*60}")
+    print(f"Testing CLIP Classification Model: {model_name}")
+    print(f"{'='*60}")
+    
+    # Process images individually due to CLIP's special preprocessing
+    with torch.no_grad():
+        for idx in tqdm(range(len(test_dataset)), desc=f"Testing {model_name}"):
+            image, label = test_dataset[idx]
+            
+            # Convert tensor back to PIL Image for CLIP processor
+            # Denormalize if needed (assuming ImageNet normalization)
+            mean = torch.tensor([0.485, 0.456, 0.406]).view(3, 1, 1)
+            std = torch.tensor([0.229, 0.224, 0.225]).view(3, 1, 1)
+            image_denorm = image * std + mean
+            image_denorm = torch.clamp(image_denorm, 0, 1)
+            
+            # Convert to PIL Image
+            from PIL import Image
+            image_pil = Image.fromarray((image_denorm.permute(1, 2, 0).numpy() * 255).astype(np.uint8))
+            
+            # Preprocess with CLIP processor
+            pixel_values = model.processor(images=image_pil, return_tensors="pt")["pixel_values"].to(device)
+            
+            # Forward pass
+            with torch.cuda.amp.autocast():
+                outputs = model(pixel_values)
+            
+            # Get predictions
+            _, predicted = torch.max(outputs, 1)
+            
+            all_preds.append(predicted.cpu().item())
+            all_labels.append(label if isinstance(label, int) else label.item())
+    
+    # Calculate metrics
+    metrics = calculate_classification_metrics(all_preds, all_labels)
+    
+    # Print results
+    print(f"\n{model_name} Test Results:")
+    print(f"{'-'*60}")
+    print(f"Accuracy:  {metrics['accuracy']:.2f}%")
+    print(f"Precision: {metrics['precision']:.2f}%")
+    print(f"Recall:    {metrics['recall']:.2f}%")
+    print(f"F1 Score:  {metrics['f1']:.2f}%")
+    
+    print(f"\nPer-Class Metrics:")
+    for i, class_name in enumerate(CLASSES):
+        print(f"\n{class_name}:")
+        print(f"  Precision: {metrics['precision_per_class'][i]:.2f}%")
+        print(f"  Recall:    {metrics['recall_per_class'][i]:.2f}%")
+        print(f"  F1 Score:  {metrics['f1_per_class'][i]:.2f}%")
+    
+    print(f"\nConfusion Matrix:")
+    print(f"{'':>12} {'':>12}".join([f"{c:>12}" for c in CLASSES]))
+    for i, row in enumerate(metrics['confusion_matrix']):
+        print(f"{CLASSES[i]:<12}" + "".join([f"{val:>12}" for val in row]))
+    
+    print(f"{'='*60}\n")
+    
+    return metrics
+
+
+def test_clipseg_segmentation_model(model, test_dataset, device, model_name):
+    """
+    Test CLIPSeg segmentation model with its own preprocessing.
+    
+    Args:
+        model: The CLIPSeg segmentation model to test
+        test_dataset: Test dataset (used to get image paths and masks)
+        device: Device to run on (cuda/cpu)
+        model_name: Name of the model for display
+    
+    Returns:
+        dict: Dictionary containing all metrics
+    """
+    model.eval()
+    
+    total_iou = 0
+    total_dice = 0
+    total_pixel_acc = 0
+    total_precision = 0
+    total_recall = 0
+    total_f1 = 0
+    num_samples = 0
+    
+    print(f"\n{'='*60}")
+    print(f"Testing CLIPSeg Segmentation Model: {model_name}")
+    print(f"{'='*60}")
+    
+    # Process images individually due to CLIPSeg's special preprocessing
+    with torch.no_grad():
+        for idx in tqdm(range(len(test_dataset)), desc=f"Testing {model_name}"):
+            image, mask = test_dataset[idx]
+            
+            # Convert tensor back to PIL Image for CLIPSeg processor
+            # Denormalize if needed (assuming ImageNet normalization)
+            mean = torch.tensor([0.485, 0.456, 0.406]).view(3, 1, 1)
+            std = torch.tensor([0.229, 0.224, 0.225]).view(3, 1, 1)
+            image_denorm = image * std + mean
+            image_denorm = torch.clamp(image_denorm, 0, 1)
+            
+            # Convert to PIL Image
+            from PIL import Image
+            image_pil = Image.fromarray((image_denorm.permute(1, 2, 0).numpy() * 255).astype(np.uint8))
+            
+            # Preprocess with CLIPSeg processor
+            inputs = model.processor(
+                text=[model.text_prompt],
+                images=image_pil,
+                return_tensors="pt",
+                padding=True
+            )
+            inputs = {k: v.to(device) for k, v in inputs.items()}
+            
+            # Forward pass
+            with torch.cuda.amp.autocast():
+                outputs = model(
+                    inputs["pixel_values"],
+                    inputs["input_ids"],
+                    inputs["attention_mask"]
+                )
+            
+            # Apply sigmoid and resize to match mask size
+            outputs = torch.sigmoid(outputs)
+            if outputs.shape[-2:] != mask.shape[-2:]:
+                outputs = torch.nn.functional.interpolate(
+                    outputs.unsqueeze(0),
+                    size=mask.shape[-2:],
+                    mode='bilinear',
+                    align_corners=False
+                ).squeeze(0)
+            
+            # Ensure mask has proper dimensions
+            if mask.dim() == 2:
+                mask = mask.unsqueeze(0)
+            mask = mask.to(device)
+            
+            # Calculate metrics
+            metrics = calculate_segmentation_metrics(outputs.squeeze(), mask.squeeze())
+            total_iou += metrics['iou']
+            total_dice += metrics['dice']
+            total_pixel_acc += metrics['pixel_accuracy']
+            total_precision += metrics['precision']
+            total_recall += metrics['recall']
+            total_f1 += metrics['f1']
+            num_samples += 1
+    
+    # Average metrics
+    avg_metrics = {
+        'iou': total_iou / num_samples,
+        'dice': total_dice / num_samples,
+        'pixel_accuracy': total_pixel_acc / num_samples,
+        'precision': total_precision / num_samples,
+        'recall': total_recall / num_samples,
+        'f1': total_f1 / num_samples
+    }
+    
+    # Print results
+    print(f"\n{model_name} Test Results:")
+    print(f"{'-'*60}")
+    print(f"IoU (Jaccard):     {avg_metrics['iou']:.2f}%")
+    print(f"Dice Coefficient:  {avg_metrics['dice']:.2f}%")
+    print(f"Pixel Accuracy:    {avg_metrics['pixel_accuracy']:.2f}%")
+    print(f"Precision:         {avg_metrics['precision']:.2f}%")
+    print(f"Recall:            {avg_metrics['recall']:.2f}%")
+    print(f"F1 Score:          {avg_metrics['f1']:.2f}%")
+    print(f"{'='*60}\n")
+    
+    return avg_metrics
+
+
 def test_all_models(device='cuda', batch_size=16):
     """
     Test all trained models (both classification and segmentation).
@@ -357,7 +523,8 @@ def test_all_models(device='cuda', batch_size=16):
         "ResNet18": "ResNet18_best_acc.pt",
         "ResNet50": "ResNet50_best_acc.pt",
         "VGG16": "VGG16_best_acc.pt",
-        "VGG19": "VGG19_best_acc.pt"
+        "VGG19": "VGG19_best_acc.pt",
+        "CLIP": "CLIP_best_acc.pt"
     }
     
     # Load classification test dataset
@@ -377,16 +544,34 @@ def test_all_models(device='cuda', batch_size=16):
                 continue
             
             try:
-                # Load model architecture
-                model, _ = get_class_model(model_name)
-                
-                # Load trained weights
-                model.load_state_dict(torch.load(weight_path, map_location=device))
-                model = model.to(device)
-                
-                # Test the model
-                metrics = test_classification_model(model, test_cls_loader, device, model_name)
-                results[model_name] = metrics
+                # Special handling for CLIP
+                if model_name == "CLIP":
+                    # Load CLIP model
+                    model = CLIPClassifier(
+                        model_name="openai/clip-vit-base-patch32",
+                        num_classes=len(CLASSES),
+                        text_prompts=DEFAULT_TEXT_PROMPTS,
+                        device=device
+                    )
+                    
+                    # Load trained weights
+                    model.clip_model.load_state_dict(torch.load(weight_path, map_location=device))
+                    model = model.to(device)
+                    
+                    # Test the model with special CLIP test function
+                    metrics = test_clip_classification_model(model, test_cls_dataset, device, model_name)
+                    results[model_name] = metrics
+                else:
+                    # Load standard model architecture
+                    model, _ = get_class_model(model_name)
+                    
+                    # Load trained weights
+                    model.load_state_dict(torch.load(weight_path, map_location=device))
+                    model = model.to(device)
+                    
+                    # Test the model
+                    metrics = test_classification_model(model, test_cls_loader, device, model_name)
+                    results[model_name] = metrics
                 
                 # Clean up
                 del model
@@ -394,6 +579,8 @@ def test_all_models(device='cuda', batch_size=16):
                 
             except Exception as e:
                 print(f"\n[ERROR] Failed to test {model_name}: {e}")
+                import traceback
+                traceback.print_exc()
                 continue
     
     except FileNotFoundError as e:
@@ -405,7 +592,8 @@ def test_all_models(device='cuda', batch_size=16):
         "ResNetUnet": "ResNetUnet_best_loss.pt",
         "AttentionUNet": "AttentionUNet_best_loss.pt",
         "R2Unet": "R2Unet_best_loss.pt",
-        "R2AttUnet": "R2AttUnet_best_loss.pt"
+        "R2AttUnet": "R2AttUnet_best_loss.pt",
+        "CLIPSeg": "CLIPSeg_best_loss.pt"
     }
     
     # Load segmentation test dataset
@@ -429,16 +617,33 @@ def test_all_models(device='cuda', batch_size=16):
                     continue
                 
                 try:
-                    # Load model architecture
-                    model = get_seg_model(model_name)
-                    
-                    # Load trained weights
-                    model.load_state_dict(torch.load(weight_path, map_location=device))
-                    model = model.to(device)
-                    
-                    # Test the model
-                    metrics = test_segmentation_model(model, test_seg_loader, device, model_name)
-                    results[model_name] = metrics
+                    # Special handling for CLIPSeg
+                    if model_name == "CLIPSeg":
+                        # Load CLIPSeg model
+                        model = CLIPSegForSegmentation(
+                            model_name="CIDAS/clipseg-rd64-refined",
+                            text_prompt=DEFAULT_TEXT_PROMPT,
+                            device=device
+                        )
+                        
+                        # Load trained weights
+                        model.clipseg_model.load_state_dict(torch.load(weight_path, map_location=device))
+                        model = model.to(device)
+                        
+                        # Test the model with special CLIPSeg test function
+                        metrics = test_clipseg_segmentation_model(model, test_seg_dataset, device, model_name)
+                        results[model_name] = metrics
+                    else:
+                        # Load standard model architecture
+                        model = get_seg_model(model_name)
+                        
+                        # Load trained weights
+                        model.load_state_dict(torch.load(weight_path, map_location=device))
+                        model = model.to(device)
+                        
+                        # Test the model
+                        metrics = test_segmentation_model(model, test_seg_loader, device, model_name)
+                        results[model_name] = metrics
                     
                     # Clean up
                     del model
@@ -446,6 +651,8 @@ def test_all_models(device='cuda', batch_size=16):
                     
                 except Exception as e:
                     print(f"\n[ERROR] Failed to test {model_name}: {e}")
+                    import traceback
+                    traceback.print_exc()
                     continue
     
     except FileNotFoundError as e:
@@ -471,7 +678,7 @@ def print_summary(results):
     print("="*80)
     
     # Classification results
-    cls_models = ["ResNet18", "ResNet50", "VGG16", "VGG19"]
+    cls_models = [m for m in ["ResNet18", "ResNet50", "VGG16", "VGG19", "CLIP"] if m in results]
     if cls_models:
         print("\nCLASSIFICATION MODELS:")
         print("-"*80)
@@ -488,7 +695,7 @@ def print_summary(results):
               f"(Accuracy: {results[best_cls_model]['accuracy']:.2f}%)")
     
     # Segmentation results
-    seg_models = ["ResNetUnet", "AttentionUNet", "R2Unet", "R2AttUnet"]
+    seg_models = [m for m in ["ResNetUnet", "AttentionUNet", "R2Unet", "R2AttUnet", "CLIPSeg"] if m in results]
     if seg_models:
         print("\n\nSEGMENTATION MODELS:")
         print("-"*80)
@@ -522,8 +729,8 @@ def save_results_to_csv(results, cls_output_path="results/classification_test_re
         return
     
     # Separate classification and segmentation results
-    cls_models = [k for k in results.keys() if any(x in k for x in ["ResNet18", "ResNet50", "VGG"])]
-    seg_models = [k for k in results.keys() if "Unet" in k or "UNet" in k]
+    cls_models = [k for k in results.keys() if any(x in k for x in ["ResNet18", "ResNet50", "VGG", "CLIP"]) and "Seg" not in k]
+    seg_models = [k for k in results.keys() if "Unet" in k or "UNet" in k or "CLIPSeg" in k]
     
     # Save classification results
     if cls_models:
