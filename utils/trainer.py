@@ -11,9 +11,9 @@ from tqdm.auto import tqdm
 from PIL import Image
 from torch.utils.data import Dataset, DataLoader, Subset
 import torch.nn as nn
-import torch.nn.functional as F 
-import albumentations as A 
-from albumentations.pytorch import ToTensorV2 
+import torch.nn.functional as F
+import albumentations as A
+from albumentations.pytorch import ToTensorV2
 
 warnings.filterwarnings("ignore")
 torch.backends.cudnn.benchmark = True
@@ -27,9 +27,13 @@ from utils.helpers import *
 # [CONFIG]
 DATA_ROOT = "dataset"
 SAVE_ROOT = "weights"
-CLS_SAVE, SEG_SAVE = [os.path.join(SAVE_ROOT, p) for p in ("classification_models", "segmentation_models")]
+CLS_SAVE, SEG_SAVE = [
+    os.path.join(SAVE_ROOT, p) for p in ("classification_models", "segmentation_models")
+]
 CLASSES = ["COVID", "Healthy", "Non-COVID"]
-SPLITS_DIR = os.path.join(DATA_ROOT, "splits")  # Directory containing train.csv, val.csv, test.csv
+SPLITS_DIR = os.path.join(
+    DATA_ROOT, "splits"
+)  # Directory containing train.csv, val.csv, test.csv
 IMG_SIZE = 256  # Fixed input image size
 
 # [MAIN]
@@ -45,41 +49,70 @@ if __name__ == "__main__":
     IMAGENET_STD = [0.229, 0.224, 0.225]
 
     # --- 1. CLASSIFICATION Transforms ---
-    train_cls_transform = A.Compose([
-        A.LongestMaxSize(max_size=IMG_SIZE),
-        A.PadIfNeeded(min_height=IMG_SIZE, min_width=IMG_SIZE, border_mode=cv2.BORDER_CONSTANT, value=0),
-        A.ShiftScaleRotate(shift_limit=0.05, scale_limit=0.05, rotate_limit=15, p=0.7),
-        A.HorizontalFlip(p=0.5),
-        A.RandomBrightnessContrast(brightness_limit=0.1, contrast_limit=0.1, p=0.5),
-        A.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD),
-        ToTensorV2(),
-    ])
+    train_cls_transform = A.Compose(
+        [
+            A.LongestMaxSize(max_size=IMG_SIZE),
+            A.PadIfNeeded(
+                min_height=IMG_SIZE,
+                min_width=IMG_SIZE,
+                border_mode=cv2.BORDER_CONSTANT,
+                value=0,
+            ),
+            A.ShiftScaleRotate(
+                shift_limit=0.05, scale_limit=0.05, rotate_limit=15, p=0.7
+            ),
+            A.HorizontalFlip(p=0.5),
+            A.RandomBrightnessContrast(brightness_limit=0.1, contrast_limit=0.1, p=0.5),
+            A.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD),
+            ToTensorV2(),
+        ]
+    )
 
-    val_cls_transform = A.Compose([
-        A.LongestMaxSize(max_size=IMG_SIZE),
-        A.PadIfNeeded(min_height=IMG_SIZE, min_width=IMG_SIZE, border_mode=cv2.BORDER_CONSTANT, value=0),
-        A.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD),
-        ToTensorV2(),
-    ])
+    val_cls_transform = A.Compose(
+        [
+            A.LongestMaxSize(max_size=IMG_SIZE),
+            A.PadIfNeeded(
+                min_height=IMG_SIZE,
+                min_width=IMG_SIZE,
+                border_mode=cv2.BORDER_CONSTANT,
+                value=0,
+            ),
+            A.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD),
+            ToTensorV2(),
+        ]
+    )
 
     # --- 2. SEGMENTATION Transforms (FIXED: Using A.Resize to ensure strict $256 \times 256$ consistency) ---
     # This replaces LongestMaxSize and PadIfNeeded to fix collation errors.
 
-    train_seg_transform = A.Compose([
-        A.Resize(height=IMG_SIZE, width=IMG_SIZE), # CRITICAL FIX: Forces strict size consistency
-        A.ShiftScaleRotate(shift_limit=0.05, scale_limit=0.05, rotate_limit=15, p=0.7),
-        A.HorizontalFlip(p=0.5),
-        A.RandomBrightnessContrast(brightness_limit=0.1, contrast_limit=0.1, p=0.5),
-        A.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD),
-        ToTensorV2(),
-    ], is_check_shapes=False, additional_targets={'mask': 'mask'})
+    train_seg_transform = A.Compose(
+        [
+            A.Resize(
+                height=IMG_SIZE, width=IMG_SIZE
+            ),  # CRITICAL FIX: Forces strict size consistency
+            A.ShiftScaleRotate(
+                shift_limit=0.05, scale_limit=0.05, rotate_limit=15, p=0.7
+            ),
+            A.HorizontalFlip(p=0.5),
+            A.RandomBrightnessContrast(brightness_limit=0.1, contrast_limit=0.1, p=0.5),
+            A.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD),
+            ToTensorV2(),
+        ],
+        is_check_shapes=False,
+        additional_targets={"mask": "mask"},
+    )
 
-    val_seg_transform = A.Compose([
-        A.Resize(height=IMG_SIZE, width=IMG_SIZE), # CRITICAL FIX: Forces strict size consistency
-        A.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD),
-        ToTensorV2(),
-    ], is_check_shapes=False, additional_targets={'mask': 'mask'})
-
+    val_seg_transform = A.Compose(
+        [
+            A.Resize(
+                height=IMG_SIZE, width=IMG_SIZE
+            ),  # CRITICAL FIX: Forces strict size consistency
+            A.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD),
+            ToTensorV2(),
+        ],
+        is_check_shapes=False,
+        additional_targets={"mask": "mask"},
+    )
 
     # --- Data Loading and Splitting using separate transforms for train/val ---
 
@@ -92,7 +125,7 @@ if __name__ == "__main__":
         # We will continue if only segmentation data is present.
 
     # Classification Split
-    n_cls = int(0.8*len(full_train_cls_ds));
+    n_cls = int(0.8 * len(full_train_cls_ds))
     lengths = [n_cls, len(full_train_cls_ds) - n_cls]
     train_indices, val_indices = random_split(range(len(full_train_cls_ds)), lengths)
 
@@ -108,16 +141,18 @@ if __name__ == "__main__":
         print("Segmentation dataset is empty. Skipping segmentation training.")
         seg_train, seg_val = [], []
     else:
-        n_seg = int(0.8*len(full_train_seg_ds))
-        seg_lengths = [n_seg, len(full_train_seg_ds)-n_seg]
-        seg_train_indices, seg_val_indices = random_split(range(len(full_train_seg_ds)), seg_lengths)
+        n_seg = int(0.8 * len(full_train_seg_ds))
+        seg_lengths = [n_seg, len(full_train_seg_ds) - n_seg]
+        seg_train_indices, seg_val_indices = random_split(
+            range(len(full_train_seg_ds)), seg_lengths
+        )
 
         seg_train = Subset(full_train_seg_ds, seg_train_indices.indices)
         seg_val = Subset(full_val_seg_ds, seg_val_indices.indices)
 
-
     def make_loader(ds, bs):
-        if not ds: return None
+        if not ds:
+            return None
         # Increased num_workers to 4 for faster data loading
         return DataLoader(ds, bs, shuffle=True, num_workers=4, pin_memory=True)
 
@@ -127,7 +162,7 @@ if __name__ == "__main__":
     # Only run segmentation models as requested
     models_to_train = {
         "classification": ["ResNet50", "ResNet18", "VGG16", "VGG19"],
-        "segmentation": ["ResNetUnet", "AttentionUNet", "R2Unet", "R2AttUnet"]
+        "segmentation": ["ResNetUnet", "AttentionUNet", "R2Unet", "R2AttUnet"],
     }
 
     results = {}
@@ -146,7 +181,7 @@ if __name__ == "__main__":
                     model, cls_head_name = get_class_model(name)
                 else:
                     model = get_seg_model(name)
-                    cls_head_name = None # Not applicable for segmentation
+                    cls_head_name = None  # Not applicable for segmentation
             except Exception as e:
                 print(f"Error loading model {name}: {e}. Skipping.")
                 continue
@@ -157,17 +192,22 @@ if __name__ == "__main__":
                 train_dl, val_dl = seg_train_dl, seg_val_dl
 
             if train_dl is None or val_dl is None:
-                 print(f"Skipping training for {name}: Data loaders are not available.")
-                 continue
+                print(f"Skipping training for {name}: Data loaders are not available.")
+                continue
 
             # Pass the classification head name only for classification tasks
-            best = train(model,
-                         train_dl,
-                         val_dl,
-                         device, epochs=20, lr=1e-6, name=name,
-                         save_dir=CLS_SAVE if task=="classification" else SEG_SAVE,
-                         seg=(task=="segmentation"),
-                         cls_head_name=cls_head_name)
+            best = train(
+                model,
+                train_dl,
+                val_dl,
+                device,
+                epochs=20,
+                lr=1e-6,
+                name=name,
+                save_dir=CLS_SAVE if task == "classification" else SEG_SAVE,
+                seg=(task == "segmentation"),
+                cls_head_name=cls_head_name,
+            )
             results[name] = best
 
     # [Report]
@@ -181,8 +221,10 @@ if __name__ == "__main__":
             # Assuming 'best' holds the loss (as per training loop)
             print(f"{k:<15}: {v:.4f} Loss (Segmentation)")
 
-    best_cls = max([v for k, v in results.items() if "ResNet" in k or "VGG" in k], default=0)
-    best_seg = min([v for k, v in results.items() if "Unet" in k], default=float('inf'))
+    best_cls = max(
+        [v for k, v in results.items() if "ResNet" in k or "VGG" in k], default=0
+    )
+    best_seg = min([v for k, v in results.items() if "Unet" in k], default=float("inf"))
 
     print("================================================")
     print(f"Best Classification Accuracy: {best_cls:.2f}%")

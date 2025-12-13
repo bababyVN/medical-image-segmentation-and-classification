@@ -53,9 +53,7 @@ class DiceLoss(nn.Module):
 
         intersection = (pred_flat * target_flat).sum()
 
-        dice = (2.0 * intersection + self.smooth) / (
-            pred_flat.sum() + target_flat.sum() + self.smooth
-        )
+        dice = (2.0 * intersection + self.smooth) / (pred_flat.sum() + target_flat.sum() + self.smooth)
 
         return 1.0 - dice
 
@@ -276,9 +274,7 @@ def finetune(
 
     # Load CLIPSeg model and processor
     print("[INFO] Loading CLIPSeg model...")
-    clipseg_model = CLIPSegForImageSegmentation.from_pretrained(
-        "CIDAS/clipseg-rd64-refined"
-    )
+    clipseg_model = CLIPSegForImageSegmentation.from_pretrained("CIDAS/clipseg-rd64-refined")
     processor = CLIPSegProcessor.from_pretrained("CIDAS/clipseg-rd64-refined")
 
     clipseg_model = clipseg_model.to(device)
@@ -314,9 +310,7 @@ def finetune(
     )
 
     # Train the model
-    best_dice = train_clipseg(
-        model, train_loader, val_loader, device, epochs, lr, save_dir, text_prompt
-    )
+    best_dice = train_clipseg(model, train_loader, val_loader, device, epochs, lr, save_dir, text_prompt)
 
     return best_dice
 
