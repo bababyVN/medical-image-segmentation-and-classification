@@ -158,7 +158,7 @@ This will automatically download and prepare the dataset in the `dataset/` direc
 
 ## **Download Pre-trained Model Weights**
 
-Download the pre-trained model checkpoints from this [Google Drive link](https://drive.google.com/file/d/1EN0UHyp0OAg6Scdv_H3RpfsfXvA5NjsX/view?usp=sharing).
+Download the pre-trained model checkpoints from this [Google Drive link](https://drive.google.com/drive/folders/1tLje0zwL8PTz7-p0IsRwtTH0tPAytbk7).
 
 Unzip the downloaded file and place the weights in the project's working directory (same level as `demo/`, `models/`, etc.).
 
